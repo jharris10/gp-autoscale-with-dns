@@ -797,8 +797,8 @@ def createdns(gwip, fqdn):
             logger.info("[RESPONSE]: {}".format(e))
             return 'ERROR'
 
-    logger.info("[Info]: Created reating DNS entry with fqdn $s", fqdn)
-    logger.info("[Info]: Created reating DNS entry with ip $s", gwip)
+    logger.info("[Info]: Created reating DNS entry with fqdn %s", fqdn)
+    logger.info("[Info]: Created reating DNS entry with ip %s", gwip)
     return
 
 
