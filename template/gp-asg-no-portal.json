@@ -30,25 +30,25 @@
     "Mappings": {
         "PANGFWAWSRegionMap": {
             "us-west-2": {
-                "AMI": "ami-e4be4b84"
+                "AMI": "ami-d28992ab"
             },
             "eu-west-1": {
-                "AMI": "ami-5d92132e"
+                "AMI": "ami-86d63eff"
             },
             "us-east-1": {
-                "AMI": "ami-29a8a243"
+                "AMI": "ami-7dcb9906"
             },
             "eu-central-1": {
-                "AMI": "ami-8be001e4"
+                "AMI": "ami-6df35f02"
             },
-            "ap-northeast-1": {
-                "AMI": "ami-b84b5ad6"
+            "ap-northeast": {
+                "AMI": "ami-ab04e7cd"
             },
             "ap-southeast-1": {
-                "AMI": "ami-946da7f7"
+                "AMI": "ami-17a41074"
             },
             "ap-southeast-2": {
-                "AMI": "ami-d7c6e5b4"
+                "AMI": "ami-8ed3cced"
             }
         }
     },
