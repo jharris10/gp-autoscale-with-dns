@@ -630,7 +630,7 @@
                         "Ebs": {
                             "VolumeType": "gp2",
                             "DeleteOnTermination": "true",
-                            "VolumeSize": "40"
+                            "VolumeSize": "65"
                         }
                     }
                 ],
