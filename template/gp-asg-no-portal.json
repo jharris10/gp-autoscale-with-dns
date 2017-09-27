@@ -35,6 +35,9 @@
             "eu-west-1": {
                 "AMI": "ami-86d63eff"
             },
+            "eu-west-2": {
+                "AMI": "ami-3c170658"
+            },
             "us-east-1": {
                 "AMI": "ami-7dcb9906"
             },
