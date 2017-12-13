@@ -25,7 +25,13 @@ import ssl
 import xml.etree.ElementTree as et
 import time
 import json
-import netaddr
+#import netaddr
+import os
+from boto3.dynamodb.conditions import Attr
+import boto3.exceptions as Clienterror
+
+
+tablename = os.environ['dbTable']
 
 asg = boto3.client('autoscaling')
 rt53client = boto3.client('route53')
@@ -34,6 +40,7 @@ ec2_client = boto3.client('ec2')
 lambda_client = boto3.client('lambda')
 iam_client = boto3.client('iam')
 events_client = boto3.client('events')
+dynamodb = boto3.resource('dynamodb')
 
 
 logger = logging.getLogger()
@@ -57,6 +64,8 @@ rt53Domain = ""
 hostedZoneId = ""
 hostname = ""
 fqdn = ""
+
+
 
 def config_gw_lambda_handler(event, context):
     global gcontext
@@ -300,58 +309,64 @@ def config_gw(context):
     #Config gw
     #once it is up, need to figure out how to update the portal with this EIP?????
     # No need to commit gateway as bootstrap uses wildcard cert.
-    '''
-    if (send_command('certificate') == 'false'):
-        logger.info("[ERROR]: Generate certificate error")
-        terminate('false')
-        return
-    else:
-        logger.info("[INFO]: Generate certificate success")
 
+    # if (send_command('certificate') == 'false'):
+    #     logger.info("[ERROR]: Generate certificate error")
+    #     terminate('false')
+    #     return
+    # else:
+    #     logger.info("[INFO]: Generate certificate success")
+    #
+    #
+    #
+    # if(send_command('tls_profile') == 'false'):
+    #     logger.info("[ERROR]: Could not update ssl/tls profile for gateway with generated cert")
+    #     terminate('false')
+    #     return
+    # else:
+    #     logger.info("[INFO]: Updated ssl/tls profile with generated cert")
+    #
+    # if(send_command('commit_gw') == 'false'):
+    #     logger.info("[ERROR]: Commit error")
+    #     terminate('false')
+    #     return
+    # else:
+    #     logger.info("[INFO]: Commit successful")
 
-
-    if(send_command('tls_profile') == 'false'):
-        logger.info("[ERROR]: Could not update ssl/tls profile for gateway with generated cert")
-        terminate('false')
-        return
-    else:
-        logger.info("[INFO]: Updated ssl/tls profile with generated cert")
-
-    if(send_command('commit_gw') == 'false'):
-        logger.info("[ERROR]: Commit error")
-        terminate('false')
-        return
-    else:
-        logger.info("[INFO]: Commit successful")
-    '''
     #Config portal to let it know there is a new gateway
-    if (genhostname(gwDpIp)) == 'false':
-        logger.info("[ERROR]: no hostname available for config_gw")
+    # if (genhostname(gwDpIp)) == 'false':
+    #     logger.info("[ERROR]: no hostname available for config_gw")
+    #     # terminate('false')
+    #     return 'ERROR'
+    # else:
+    #     logger.info("[INFO]: got hostname for config_gw")
+
+    if (allocate_address(gwMgmtIp) == 'false'):
+        logger.info("[ERROR]: Error allocating tunnel address and pool")
         # terminate('false')
         return 'ERROR'
     else:
-        logger.info("[INFO]: got hostname for config_gw")
+        logger.info("[INFO]: Allocating tunnel address and pool successful")
 
 
-    if(send_command('add_gw') == 'false'):
-        logger.info("[ERROR]: Error in command to add gateway to portal")
+    # if(send_command('add_gw') == 'false'):
+    #     logger.info("[ERROR]: Error in command to add gateway to portal")
+    #     terminate('false')
+    #     return
+    # else:
+    #     logger.info("[INFO]: add gateway to portal successful")
+    #
+    # if(send_command('commit_portal') == 'false'):
+    #     logger.info("[ERROR]: Commit portal job error")
+    #     terminate('false')
+    #     return
+    # else:
+    #     logger.info("[INFO]: Commit portal successful")
+    #     #terminate('true')
+
+    if (createdns(gwDpIp) == 'false'):
+        logger.info("[ERROR]: Error in command to add GW IP to RT53")
         terminate('false')
-        return
-    else:
-        logger.info("[INFO]: add gateway to portal successful")
-
-    if(send_command('commit_portal') == 'false'):
-        logger.info("[ERROR]: Commit portal job error")
-        terminate('false')
-        return
-    else:
-        logger.info("[INFO]: Commit portal successful")
-        #terminate('true')
-
-
-    if (createdns(gwDpIp, fqdn) == 'false'):
-        logger.info("[ERROR]: Error in command to create gateway from RT53")
-        # terminate('false')
         return 'ERROR'
     else:
         logger.info("[INFO]: create gateway from RT53 successful")
@@ -380,7 +395,6 @@ def config_gw(context):
         logger.info("[ERROR]: Could not get lambda execution Role ARN")
         terminate('false')
         return
-
 
     logger.info("[INFO]: Creating lambda function")
 
@@ -484,6 +498,30 @@ def terminate_gw():
     global this_func_name
     global lambda_function_arn
 
+    if (release_ips() == 'false'):
+        logger.info("[ERROR]: Failed to deallocate Tunnel network in Dynamodb")
+        # terminate('false')
+        return 'ERROR'
+    else:
+        logger.info("[INFO]: Release of tunnel network successful")
+    # Delete gw from portal
+    
+    if (send_command('del_gw') == 'false'):
+        logger.info("[ERROR]: Error in command to delete gateway from portal")
+        # terminate('false')
+        return 'ERROR'
+    else:
+        logger.info("[INFO]: delete gateway from portal successful")
+
+    if (send_command('commit_portal') == 'false'):
+        logger.info("[ERROR]: Commit portal job error")
+        # terminate('false')
+        return 'ERROR'
+    else:
+        logger.info("[INFO]: Commit portal successful")
+        logger.info("[INFO]: Done deleting GW from the universe!")
+        # terminate('true')
+    
     try:
         events_client.remove_targets(
             Rule='PushMetricsRuleFor-'+instanceId,
@@ -523,30 +561,10 @@ def terminate_gw():
     else:
         logger.info("[INFO]: Successfully deleted lambda function")
 
-    if(deletedns(gwDpIp, fqdn) == 'false'):
-        logger.info("[ERROR]: Error in command to delete gateway from RT53")
-        #terminate('false')
-        return 'ERROR'
-    else:
-        logger.info("[INFO]: delete gateway from RT53 successful")
 
-    #Delete gw from portal
-    if(send_command('del_gw') == 'false'):
-        logger.info("[ERROR]: Error in command to delete gateway from portal")
-        #terminate('false')
-        return 'ERROR'
-    else:
-        logger.info("[INFO]: delete gateway from portal successful")
 
-    if(send_command('commit_portal') == 'false'):
-        logger.info("[ERROR]: Commit portal job error")
-        #terminate('false')
-        return 'ERROR'
-    else:
-        logger.info("[INFO]: Commit portal successful")
-        logger.info("[INFO]: Done deleting GW from the universe!")
-        #terminate('true')
-        return 'OK'
+
+    
 
 
 def send_command(cmd):
@@ -612,6 +630,11 @@ def send_command(cmd):
     #The fw responded with a successful command execution. No need to check what the actual response is
         logger.info("[INFO]: Successfully executed command")
         return 'true'
+
+    if (allocate_address() == 'false'):
+        logger.info("[ERROR]: Error allocating GP tunnel address and pool")
+        return 'false'
+
 
     if(cmd == 'commit_gw' or cmd == 'commit_portal'):
         for element in resp_header:
@@ -743,41 +766,189 @@ def check_auto_commit_status():
                         else:
                             return 'almost'
 
-def deletedns(gwip, fqdn):
-    logger.info('[INFO]: Creating DNS Record for IP address: %s', gwip)
-    response = rt53client.change_resource_record_sets(
-    HostedZoneId=hostedZoneId,
-    ChangeBatch={
-        'Comment': 'comment',
-        'Changes': [
-            {
-                'Action': 'DELETE',
-                'ResourceRecordSet': {
-                    'Name': fqdn,
-                    'Type': 'A',
-                    'TTL': 60,
-                    'ResourceRecords': [
-                        {
-                            'Value': gwip
-                        },
-                    ],
-                }
+
+
+
+def allocate_address(gwMgmtIp):
+
+    global gcontext
+    global api_key
+    global instanceId
+    global tablename
+    strinstance = instanceId
+
+    table = dynamodb.Table(tablename)
+
+    try:
+        response = table.scan(
+            FilterExpression=Attr('Allocated').eq('no')
+            )
+    except Clienterror as e:
+        logger.info("[ERROR]: Failed to retrieve IP from database {}".format(e.args))
+        return 'false'
+
+    available_ips = response['Items']
+    cidr_network = available_ips[0]['CIDR']
+    IP = available_ips[0]['TunnelIP']
+    poolrange = available_ips[0]['Pool Range']
+
+
+    cmd_string = "https://" + gwMgmtIp +"/api/?type=config" \
+                                         "&action=set" \
+                                         "&xpath=/config/devices/entry[@name='localhost.localdomain']/vsys/entry" \
+                                         "[@name='vsys1']/global-protect/global-protect-gateway/entry[@name='gw1']/" \
+                                         "remote-user-tunnel-configs/entry[@name='gw1']/ip-pool" \
+                                         "&element=<member>" + poolrange + "</member>&key=" + api_key
+
+    #
+    # URL Encoded cmd_string1 due to problems with urllib2 sending command to firewall
+    # original command stucture is
+    #
+    # cmd_string1 = "https://" + gwMgmtIp + "/api/?type=config" \
+    #                                      "&action=set&xpath=/config/devices/entry[@name='localhost.localdomain']" \
+    #                                       "/network/interface/tunnel/units/entry[@name='tunnel.10']" \
+    #                                       "&element=<ip><entry name='" +poolip + "'/></ip>&key=" + fwapikey
+
+    cmd_string1 = "https://" + gwMgmtIp +"/api/?type=config" \
+                  "&action=set&xpath=%2Fconfig%2Fdevices%2Fentry%5B%40name%3D%27localhost.localdomain%27%5D%" \
+                  "2Fnetwork%2Finterface%2Ftunnel%2Funits%2Fentry%5B%40name%3D%27tunnel.10%27%5D" \
+                  "&key=" + api_key + \
+                  "&element=%3Cip%3E%3Centry+name%3D%22" + IP + "%2F24%22%2F%3E%3C%2Fip%3E"
+
+
+    try:
+
+        response = urllib2.urlopen(cmd_string, context=gcontext, timeout=5).read()
+        logger.info('[INFO]: Sending command: %s', cmd_string)
+        logger.info("[RESPONSE] in send command to set the pool address range {}".format(response))
+
+        logger.info('[INFO]: Sending command: %s', cmd_string1)
+        response1 = urllib2.urlopen(cmd_string1, context=gcontext, timeout=5).read()
+        logger.info("[RESPONSE] in send command to set the tunnel.1 address {}".format(response1))
+
+        resp_header = et.fromstring(response)
+        resp_header1 = et.fromstring(response1)
+
+        if (resp_header.tag != 'response' or resp_header1.tag != 'response'):
+            logger.info("[ERROR]: didn't get a valid response from firewall when setting up tunnel int or pool")
+            return
+
+        if resp_header.attrib['status'] == 'success' and resp_header1.attrib['status'] == 'success':
+            # The fw responded with a successful command execution. No need to check what the actual response is
+            logger.info("[INFO]: Successfully executed commands to setup firewall with tunnel and pool addresses")
+            tablename = 'GPClientIP'
+            table = dynamodb.Table(tablename)
+
+            try:
+                response = table.update_item(
+                    Key={'CIDR': cidr_network},
+                    UpdateExpression=("SET Allocated = :val1, InstanceID =:Inst"),
+                    ExpressionAttributeValues={
+                        ':val1': "yes",
+                        ':Inst': strinstance
+                    },
+                    ReturnValues="UPDATED_NEW"
+                )
+            except Clienterror as e:
+                logger.info("[ERROR]: didn't get a valid response from firewall when setting up tunnel int or pool")
+
+            return
+
+    except urllib2.URLError, e:
+        logger.info("[ERROR]: Something bad happened when sending command{}".format(e.args))
+        return 'false'
+
+
+def release_ips():
+    global instanceId
+    strinstance = instanceId
+    tablename = 'GPClientIP'
+    table = dynamodb.Table(tablename)
+    try:
+        response = table.scan(
+            FilterExpression=Attr('InstanceID').eq(strinstance)
+        )
+        records = response['Items']
+        IP = records[0]['CIDR']
+        logger.info('[INFO]: Released IP address %s',IP)
+
+        response = table.update_item(
+            Key={'CIDR': IP},
+            UpdateExpression=("SET Allocated = :val1,InstanceID =:val2"),
+            ExpressionAttributeValues={
+                ':val1': "no",
+                ':val2': "None"
             },
-        ]
-    }
-    )
+        )
+        return
+    except Clienterror as e:
+        print(e.response['Error']['Message'])
+        return 'false'
+        
 
-    return
+def get_ips():
+    tablename = 'GPClientIP'
+    table = dynamodb.Table(tablename)
 
-def createdns(gwip, fqdn):
+    try:
+        response = table.scan(
+        FilterExpression=Attr('Allocated').eq('no')
+        )
+    except Clienterror as e:
+        logger.info("[ERROR]: Something bad happened when sending command{}".format(e.args))
+        return
+
+    available_ips = response['Items']
+    cidr_network = available_ips[0]['CIDR']
+    TunnelIntAddress = available_ips[0]['TunnelIP']
+    VPNPool = available_ips[0]['Pool Range']
+
+
+def creatednsfqdn(gwip, fqdn):
+
     try:
         rt53client.change_resource_record_sets(
+            HostedZoneId=hostedZoneId,
+            ChangeBatch={
+                'Comment': 'comment',
+                'Changes': [
+                    {
+                        'Action': 'UPSERT',
+                        'ResourceRecordSet': {
+                            'Name': fqdn,
+                            'Type': 'A',
+                            'TTL': 60,
+                            'ResourceRecords': [
+                                {
+                                    'Value': gwip
+                                },
+                            ],
+                        }
+                    },
+                ]
+            }
+        )
+
+    except Exception as e:
+        logger.info("[ERROR]: Error creating DNS entry")
+        logger.info("[RESPONSE]: {}".format(e))
+        return 'ERROR'
+
+    logger.info("[Info]: Created reating DNS entry with fqdn %s", fqdn)
+    logger.info("[Info]: Created reating DNS entry with ip %s", gwip)
+    return
+
+
+def deletednsfqdn(gwip, fqdn):
+    logger.info('[INFO]: Creating DNS Record for IP address: %s', gwip)
+
+    response = rt53client.change_resource_record_sets(
         HostedZoneId=hostedZoneId,
         ChangeBatch={
             'Comment': 'comment',
             'Changes': [
                 {
-                    'Action': 'UPSERT',
+                    'Action': 'DELETE',
                     'ResourceRecordSet': {
                         'Name': fqdn,
                         'Type': 'A',
@@ -787,42 +958,168 @@ def createdns(gwip, fqdn):
                                 'Value': gwip
                             },
                         ],
-                        }
+                    }
                 },
+            ]
+        }
+    )
+
+    return
+
+
+
+def createdns(gwip):
+    logger.info('[INFO]: Called create DNS with gwip:%s', gwip)
+    global hostedZoneId
+    global SetIdentifier
+    global rt53Domain
+    global rt53client
+    global region
+    global ttl
+    global oldgwip
+    autoscalezone = "" + rt53Domain + "."
+
+    records = rt53client.list_resource_record_sets(HostedZoneId=hostedZoneId, )['ResourceRecordSets']
+    logger.info('[INFO]: Got DNS records: %s', records)
+    for record in records:
+        logger.info('[INFO]: Got DNS record from records: %s', record)
+        if (record['Name']) == autoscalezone:
+            if record['Type'] == 'A' and record['SetIdentifier'] == 'primary':
+                logger.info('[INFO]: Got primary record:')
+                primary_arecords_list = list()
+                primary_SetIdentifier = record['SetIdentifier']
+                ttl = record['TTL']
+                # region = record['Region']
+                for arecs in record['ResourceRecords']:
+                    primary_arecords_list.append(arecs)
+                oldgwip = primary_arecords_list[-1]['Value']
+                new_arecrods_list = (primary_arecords_list[-1])
+                modify_rt53_record(new_arecrods_list, gwip, 'append', ttl, primary_SetIdentifier, 255)
+
+
+            elif record['Type'] == 'A' and record['SetIdentifier'] == 'secondary':
+                secondary_arecords_list = list()
+                SecondarySetIdentifier = record['SetIdentifier']
+                ttl = record['TTL']
+                # region = record['Region']
+                for arecs in record['ResourceRecords']:
+                    secondary_arecords_list.append(arecs)
+                    logger.info('[INFO]: Got A record in secondary:%s', arecs)
+
+                modify_rt53_record(secondary_arecords_list, oldgwip, 'append', ttl,
+                                   SecondarySetIdentifier, 1)
+
+            else:
+                logger.info("[Info] No DNS Records found.")
+                return
+    return
+
+
+def modify_rt53_record(record_list1, gwip, action, ttl, SetIdentifier, weight):
+    logger.info('[INFO]: modify rt53 called with : %s %s %s %s %s %s', record_list1, gwip, action, ttl, SetIdentifier,
+                weight)
+    """
+    Modifies a given resource record set for
+    HostedZoneId
+
+    """
+    global rt53client
+    global rt53Domain
+    global hostedZoneId
+    zone_name = rt53Domain
+
+    if action == 'append':
+        arecord_dict = {}
+        record_list1 = []
+        arecord_dict['Value'] = gwip
+        record_list1.append(arecord_dict)
+    elif action == 'remove':
+        arecord_dict = {}
+
+        for ip in record_list1:
+            if ip['Value'] == gwip:
+                record_list1.remove(ip)
+
+    print record_list1
+    try:
+        rt53client.change_resource_record_sets(
+            HostedZoneId=hostedZoneId,
+            ChangeBatch={
+                'Comment': 'Added new AS Gateway',
+                'Changes': [
+                    {
+                        'Action': 'UPSERT',
+                        'ResourceRecordSet': {
+                            'TTL': ttl,
+                            'SetIdentifier': SetIdentifier,
+                            'Weight': weight,
+                            'Name': zone_name,
+                            'Type': 'A',
+
+                            'ResourceRecords':
+                                record_list1
+
+                        }
+                    },
                 ]
             }
         )
-    except Exception as e:
-            logger.info("[ERROR]: Error creating DNS entry")
-            logger.info("[RESPONSE]: {}".format(e))
-            return 'ERROR'
-
-    logger.info("[Info]: Created reating DNS entry with fqdn %s", fqdn)
-    logger.info("[Info]: Created reating DNS entry with ip %s", gwip)
-    return
+    except Clienterror as e:
+        print(e.response['Error']['Message'])
 
 
-def genhostname(gwip):
-    global hostname
-    global fqdn
+def get_new_ip(records):
+    """
+    Filters only A records from Record Set
+    """
+    global SetIdentifier
+    global rt53Domain
+    global region
+    global ttl
+    for record in records:
+        print record['Name']
+        if (record['Name']) == rt53Domain:
+            if record['Type'] == 'A' and record['SetIdentifier'] == 'primary':
+                primary_arecords_list = []
+                primary_SetIdentifier = record['SetIdentifier']
+                ttl = record['TTL']
+                # region = record['Region']
+                for arecs in record['ResourceRecords']:
+                    primary_arecords_list.append(arecs)
+                    return
 
-    hostname = str(int(netaddr.IPAddress(gwip)))
-    if hostname:
-        logger.info("[INFO]: Generated unique hostname from IP.")
-    else:
-        logger.error("[ERROR]: Failed to generate hostname\n")
-        return 'false'
-
-    fqdn = hostname + '.' + rt53Domain
-
-    if fqdn:
-        logger.info("[INFO]: Generated unique fqdn.")
-    else:
-        logger.error("[ERROR]: Failed to generate fqdn\n")
-        return 'false'
-    return
+            elif record['Type'] == 'A' and record['SetIdentifier'] == 'secondary':
+                secondary_arecords_list =[]
+                SecondarySetIdentifier = record['SetIdentifier']
+                ttl = record['TTL']
+                #region = record['Region']
+                for arecs in record['ResourceRecords']:
+                    secondary_arecords_list.append(arecs)
+                    return
+            else:
+                logger.info("[Info] No DNS Records found.")
+                return
 
 
+
+
+# def genhostname(gwip):
+#     global hostname
+#     global fqdn
+#     hostname = str(int(netaddr.IPAddress(gwip)))
+#     if hostname:
+#         logger.info("[INFO]: Generated unique hostname from IP.")
+#     else:
+#         logger.error("[ERROR]: Failed to generate hostname\n")
+#         return 'false'
+#     fqdn = hostname + '.' + rt53Domain
+#
+#     if fqdn:
+#         logger.info("[INFO]: Generated unique fqdn.")
+#     else:
+#         logger.error("[ERROR]: Failed to generate fqdn\n")
+#         return 'false'
+#     return
 
 
 
@@ -831,6 +1128,7 @@ def terminate(success):
     global asg_name
     global asg_hookname
     global instanceId
+
 
     #log that we're terminating and why
     if (success == 'false'):

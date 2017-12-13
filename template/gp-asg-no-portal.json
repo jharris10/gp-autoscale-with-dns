@@ -25,6 +25,11 @@
         "hostedZoneId": {
             "Description": "Route53 Hosted Zone ID",
             "Type": "String"        
+        },
+        "GWPoolAddressTable": {
+            "Description": "Name of the Pool Address Table",
+            "Default": "GPClientIP",
+            "Type": "String"        
         }
     },
     "Mappings": {
@@ -217,6 +222,13 @@
                                     "Resource": "*",
                                     "Effect": "Allow",
                                     "Action": [
+                                        "dynamodb:*"
+                                    ]
+                                },
+                                {
+                                    "Resource": "*",
+                                    "Effect": "Allow",
+                                    "Action": [
                                         "cloudwatch:PutMetricData"
                                     ]
                                 }
@@ -288,6 +300,10 @@
                         "Arn"
                     ]
                 },
+                "Environment":{ "Variables": 
+                    {
+                    "dbTable": {"Ref": "GWPoolAddressTable"}}
+                    },
                 "Code": {
                     "S3Bucket": {
                         "Ref": "LambdaBucketName"
