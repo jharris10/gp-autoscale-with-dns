@@ -25,11 +25,10 @@ import ssl
 import xml.etree.ElementTree as et
 import time
 import json
-#import netaddr
+import netaddr
 import os
 from boto3.dynamodb.conditions import Attr
 import boto3.exceptions as Clienterror
-
 
 tablename = os.environ['dbTable']
 
@@ -42,12 +41,10 @@ iam_client = boto3.client('iam')
 events_client = boto3.client('events')
 dynamodb = boto3.resource('dynamodb')
 
-
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-
-#Some global variables....yikes!
+# Some global variables....yikes!
 asg_name = ""
 asg_hookname = ""
 instanceId = ""
@@ -64,7 +61,6 @@ rt53Domain = ""
 hostedZoneId = ""
 hostname = ""
 fqdn = ""
-
 
 
 def config_gw_lambda_handler(event, context):
@@ -84,12 +80,10 @@ def config_gw_lambda_handler(event, context):
     global fqdn
     global hostedZoneId
 
-
     logger.info('[INFO] Got event{}'.format(event))
 
-
-    #If coming from AddENI then this is what the incoming event looks like:
-    #{
+    # If coming from AddENI then this is what the incoming event looks like:
+    # {
     #  u'instance-id': u'<ec2 instance id>',
     #  u'gateway-mgmt-ip': u'<gateway mgmt ip>,
     #  u'gateway-dp-ip': u'<gateway dataplane ip>,
@@ -101,27 +95,27 @@ def config_gw_lambda_handler(event, context):
     #  u'lambda_bucket_name': u'<lambda func bucket name>'
     #  u'rt53Domain': u'<rt53 Domain>'
     #  u'hostedZoneId': u'<rt53 Domain>'
-    #}
+    # }
 
-    #This is because lambda functions created in CFTs have misc identifiers
-    #and by specifying a function name, you cannot launch multiple cft's at the same time
+    # This is because lambda functions created in CFTs have misc identifiers
+    # and by specifying a function name, you cannot launch multiple cft's at the same time
     this_func_name = event.get('config-gw-func-name')
     if this_func_name == None:
         logger.info("[ERROR]: Didn't get function name")
         return
     else:
-        logger.info ("[INFO]: Function Name = {}".format(this_func_name))
+        logger.info("[INFO]: Function Name = {}".format(this_func_name))
 
     asg_name = event.get('asg-name')
     if asg_name == None:
         logger.info("[ERROR]: didn't get an asg name")
-        #raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
+        # raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
         return;
 
     asg_hookname = event.get('asg-hookname')
     if asg_hookname == None:
         logger.info("[ERROR]: didn't get an asg hookname")
-        #raise Exception('Failed to get ASG hookname in : ', inspect.stack()[1][3])
+        # raise Exception('Failed to get ASG hookname in : ', inspect.stack()[1][3])
         return
 
     gwMgmtIp = event.get('gateway-mgmt-ip')
@@ -145,14 +139,14 @@ def config_gw_lambda_handler(event, context):
     instanceId = event.get('instance-id')
     if instanceId == None:
         logger.info("[ERROR]: didn't get Instance Id")
-        #raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
+        # raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
         terminate('false')
         return
 
     lambda_bucket_name = event.get('lambda_bucket_name')
     if lambda_bucket_name == None:
         logger.info("[ERROR]: didn't get lambda bucket name")
-        #raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
+        # raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
         terminate('false')
         return
 
@@ -168,15 +162,15 @@ def config_gw_lambda_handler(event, context):
         terminate('false')
         return
 
-    #The api key is pre-generated for  api_user/Pal0Alt0
+    # The api key is pre-generated for  api_user/Pal0Alt0
     api_key = "LUFRPT11dEtJM0tPTzVHMnJhelpHUzVDN2k5clpTd0E9TUdXZUpoeG5LOVJXemxuVGZ6VGtKdWNlckU2d2RoK2U2RGRxVU1Oc3VJaz0="
-    #Need this to by pass invalid certificate issue. Should try to fix this
+    # Need this to by pass invalid certificate issue. Should try to fix this
     gcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 
     event_type = event.get('event-name')
     if event_type == 'gw-terminate':
         logger.info("[INFO]: Got GW terminate event")
-        return terminate_gw() #this is a synchronous call
+        return terminate_gw()  # this is a synchronous call
     elif event_type == 'gw-launch':
         logger.info("[INFO]: Got gw launch event")
         config_gw(context)
@@ -185,6 +179,7 @@ def config_gw_lambda_handler(event, context):
         logger.info("[ERROR]: What event is this?")
         terminate('false')
         return
+
 
 ## START LAUNCH CODE
 def config_gw(context):
@@ -203,7 +198,7 @@ def config_gw(context):
 
     err = 'no'
     while (True):
-        #err = check_fw_up()
+        # err = check_fw_up()
         err = check_auto_commit_status()
         if err == 'cmd_error':
             logger.info("[ERROR]: Command error from fw")
@@ -211,14 +206,14 @@ def config_gw(context):
             return
         elif err == 'no':
             logger.info("[INFO] FW is not up...yet")
-            if (context.get_remaining_time_in_millis())/1000/60 < 2:
+            if (context.get_remaining_time_in_millis()) / 1000 / 60 < 2:
                 logger.info("[INFO] have less than two minutes so call self")
-                parameters ={
+                parameters = {
                     "instance-id": instanceId,
                     "gateway-mgmt-ip": gwMgmtIp,
                     "gateway-dp-ip": gwDpIp,
                     "asg-name": asg_name,
-                    "asg-hookname" : asg_hookname,
+                    "asg-hookname": asg_hookname,
                     "portal-mgmt-ip": PortalMgmtIp,
                     "config-gw-func-name": this_func_name,
                     "event-name": "gw-launch",
@@ -227,31 +222,32 @@ def config_gw(context):
                     "hostedZoneId": hostedZoneId
                 }
                 invoke_response = lambda_client.invoke(FunctionName=this_func_name,
-                                                        InvocationType='Event', Payload=json.dumps(parameters))
+                                                       InvocationType='Event', Payload=json.dumps(parameters))
                 if invoke_response.get('StatusCode') == 202:
                     logger.info("[INFO]: Got OK from invoke lambda functions. exiting...")
                     return;
                 else:
-                    logger.info("[ERROR]: Something bad happened when calling lambda. invoke_response = {}". format(invoke_response))
-                    #terminate lifecycle action
+                    logger.info("[ERROR]: Something bad happened when calling lambda. invoke_response = {}".format(
+                        invoke_response))
+                    # terminate lifecycle action
                     terminate('false')
                     return
             else:
-                #since we 2 or more minutes left of execution time, sleep (30) and trya again?
+                # since we 2 or more minutes left of execution time, sleep (30) and trya again?
                 logger.info("[INFO]: 2 or more minutes left in lambda function. So will check again in 30s")
                 time.sleep(30)
                 continue
         elif err == 'almost':
-            #this means autocommit is happening
+            # this means autocommit is happening
             logger.info("[INFO]: FW is up, but chassis is not ready")
-            if (context.get_remaining_time_in_millis())/1000/60 < 2:    #get remaining time in minutes
+            if (context.get_remaining_time_in_millis()) / 1000 / 60 < 2:  # get remaining time in minutes
                 logger.info("[INFO]: Have less than two minutes but fw is almost up, so call self and exit")
-                parameters ={
+                parameters = {
                     "instance-id": instanceId,
                     "gateway-mgmt-ip": gwMgmtIp,
                     "gateway-dp-ip": gwDpIp,
                     "asg-name": asg_name,
-                    "asg-hookname" : asg_hookname,
+                    "asg-hookname": asg_hookname,
                     "portal-mgmt-ip": PortalMgmtIp,
                     "config-gw-func-name": this_func_name,
                     "event-name": "gw-launch",
@@ -260,30 +256,32 @@ def config_gw(context):
                     "hostedZoneId": hostedZoneId
                 }
                 invoke_response = lambda_client.invoke(FunctionName=this_func_name,
-                                                        InvocationType='Event', Payload=json.dumps(parameters))
+                                                       InvocationType='Event', Payload=json.dumps(parameters))
                 if invoke_response.get('StatusCode') == 202:
                     logger.info("[INFO]: Got OK from invoke lambda functions. exiting...")
                     return;
                 else:
-                    logger.info("[ERROR]: Something bad happened when calling lambda. invoke_response = {}". format(invoke_response))
-                    #terminate lifecycle action
+                    logger.info("[ERROR]: Something bad happened when calling lambda. invoke_response = {}".format(
+                        invoke_response))
+                    # terminate lifecycle action
                     terminate('false')
                     return
             else:
-                #since we 2 or more minutes left of execution time, sleep (30) and trya again?
-                logger.info("[INFO]: 2 or more minutes left in lambda function. since autocommit is happening, sleep 10")
+                # since we 2 or more minutes left of execution time, sleep (30) and trya again?
+                logger.info(
+                    "[INFO]: 2 or more minutes left in lambda function. since autocommit is happening, sleep 10")
                 time.sleep(10)
                 continue
         elif err == 'yes':
             logger.info("[INFO]: FW is up, but is there enough time left?")
-            if (context.get_remaining_time_in_millis())/1000/60 < 3:
+            if (context.get_remaining_time_in_millis()) / 1000 / 60 < 3:
                 logger.info("[INFO]: No. 3 or less minutes remaining. So call self and exit")
-                parameters ={
+                parameters = {
                     "instance-id": instanceId,
                     "gateway-mgmt-ip": gwMgmtIp,
                     "gateway-dp-ip": gwDpIp,
                     "asg-name": asg_name,
-                    "asg-hookname" : asg_hookname,
+                    "asg-hookname": asg_hookname,
                     "portal-mgmt-ip": PortalMgmtIp,
                     "config-gw-func-name": this_func_name,
                     "event-name": "gw-launch",
@@ -292,22 +290,24 @@ def config_gw(context):
                     "hostedZoneId": hostedZoneId
                 }
                 invoke_response = lambda_client.invoke(FunctionName=this_func_name,
-                                                        InvocationType='Event', Payload=json.dumps(parameters))
+                                                       InvocationType='Event', Payload=json.dumps(parameters))
                 if invoke_response.get('StatusCode') == 202:
                     logger.info("[INFO]: Got OK from invoke lambda functions. exiting...")
                     return;
                 else:
-                    logger.info("[ERROR]: Something bad happened when calling lambda. invoke_response = {}". format(invoke_response))
-                    #terminate lifecycle action
+                    logger.info("[ERROR]: Something bad happened when calling lambda. invoke_response = {}".format(
+                        invoke_response))
+                    # terminate lifecycle action
                     terminate('false')
                     return
             else:
-                logger.info("[INFO]: FW is up and there is 3 or more minutes left. So exit the loop and config gw...finally!!")
-                time.sleep(10) #sleep as there is a time gap between ready and all daemons up
+                logger.info(
+                    "[INFO]: FW is up and there is 3 or more minutes left. So exit the loop and config gw...finally!!")
+                time.sleep(10)  # sleep as there is a time gap between ready and all daemons up
                 break
 
-    #Config gw
-    #once it is up, need to figure out how to update the portal with this EIP?????
+    # Config gw
+    # once it is up, need to figure out how to update the portal with this EIP?????
     # No need to commit gateway as bootstrap uses wildcard cert.
 
     # if (send_command('certificate') == 'false'):
@@ -333,13 +333,13 @@ def config_gw(context):
     # else:
     #     logger.info("[INFO]: Commit successful")
 
-    #Config portal to let it know there is a new gateway
-    # if (genhostname(gwDpIp)) == 'false':
-    #     logger.info("[ERROR]: no hostname available for config_gw")
-    #     # terminate('false')
-    #     return 'ERROR'
-    # else:
-    #     logger.info("[INFO]: got hostname for config_gw")
+    # Config portal to let it know there is a new gateway
+    if (genhostname(gwDpIp)) == 'false':
+        logger.info("[ERROR]: no hostname available for config_gw")
+        # terminate('false')
+        return 'ERROR'
+    else:
+        logger.info("[INFO]: got hostname for config_gw")
 
     if (allocate_address(gwMgmtIp) == 'false'):
         logger.info("[ERROR]: Error allocating tunnel address and pool")
@@ -347,7 +347,6 @@ def config_gw(context):
         return 'ERROR'
     else:
         logger.info("[INFO]: Allocating tunnel address and pool successful")
-
 
     # if(send_command('add_gw') == 'false'):
     #     logger.info("[ERROR]: Error in command to add gateway to portal")
@@ -364,7 +363,7 @@ def config_gw(context):
     #     logger.info("[INFO]: Commit portal successful")
     #     #terminate('true')
 
-    if (createdns(gwDpIp) == 'false'):
+    if (creatednsfqdn(gwDpIp) == 'false'):
         logger.info("[ERROR]: Error in command to add GW IP to RT53")
         terminate('false')
         return 'ERROR'
@@ -372,11 +371,11 @@ def config_gw(context):
         logger.info("[INFO]: create gateway from RT53 successful")
 
     logger.info("[INFO]: Getting Roles and stuff")
-    #Create a lambda function that will run every minute and get metrics
-    roles= iam_client.list_roles().get('Roles')
+    # Create a lambda function that will run every minute and get metrics
+    roles = iam_client.list_roles().get('Roles')
 
     for role_iter in roles:
-        #logger.info("[INFO]: ROLE NAME: {}".format(role_iter.get('RoleName')))
+        # logger.info("[INFO]: ROLE NAME: {}".format(role_iter.get('RoleName')))
         if 'LambdaExecutionRole' in role_iter.get('RoleName'):
             lambda_exec_role_name = role_iter.get('RoleName')
             logger.info('[INFO]: Found LambdaExecutionRole name')
@@ -389,7 +388,6 @@ def config_gw(context):
         terminate('false')
         return
 
-
     lambda_exec_role_arn = iam_client.get_role(RoleName=lambda_exec_role_name).get('Role').get('Arn')
     if lambda_exec_role_arn == None:
         logger.info("[ERROR]: Could not get lambda execution Role ARN")
@@ -400,7 +398,7 @@ def config_gw(context):
 
     try:
         response = lambda_client.create_function(
-            FunctionName='PushMetricsFor-'+instanceId,
+            FunctionName='PushMetricsFor-' + instanceId,
             Runtime='python2.7',
             Role=lambda_exec_role_arn,
             Handler='push_metrics.gw_metrics_lambda_handler',
@@ -419,12 +417,10 @@ def config_gw(context):
         logger.info("[INFO]: Successfully created lambda function!")
         lambda_function_arn = response.get('FunctionArn')
 
-
-
-    #Now create a rule that runs every 1 minute and executes above lambda function
+    # Now create a rule that runs every 1 minute and executes above lambda function
     try:
         response = events_client.put_rule(
-            Name='PushMetricsRuleFor-'+instanceId,
+            Name='PushMetricsRuleFor-' + instanceId,
             ScheduleExpression='rate(1 minute)',
             State='ENABLED'
         )
@@ -444,7 +440,7 @@ def config_gw(context):
     try:
         response = lambda_client.add_permission(
             FunctionName=lambda_function_arn,
-            StatementId='PushMetricsFor-'+instanceId,
+            StatementId='PushMetricsFor-' + instanceId,
             Action='lambda:InvokeFunction',
             Principal='events.amazonaws.com',
             SourceArn=events_source_arn
@@ -459,14 +455,14 @@ def config_gw(context):
 
     Input = {'gw-mgmt-ip': gwMgmtIp, 'asg-name': asg_name}
     try:
-        response= events_client.put_targets(
-            Rule='PushMetricsRuleFor-'+instanceId,
+        response = events_client.put_targets(
+            Rule='PushMetricsRuleFor-' + instanceId,
             Targets=
-                [{
-                    'Id': gwMgmtIp,
-                    'Arn': lambda_function_arn,
-                    'Input': json.dumps(Input)
-                }]
+            [{
+                'Id': gwMgmtIp,
+                'Arn': lambda_function_arn,
+                'Input': json.dumps(Input)
+            }]
         )
     except Exception as e:
         logger.info("[ERROR]: put_targets error")
@@ -476,12 +472,13 @@ def config_gw(context):
     else:
         logger.info("[INFO]: Successfully added target to rule!")
         if response.get('FailedEntryCount') > 0:
-            logger.info('[ERROR]: Failed entry count is '+response.get('FailedEntryCount'))
+            logger.info('[ERROR]: Failed entry count is ' + response.get('FailedEntryCount'))
             terminate('false')
             return
         else:
             terminate('true')
             return
+
 
 ###END LAUNCH CODE
 
@@ -498,14 +495,21 @@ def terminate_gw():
     global this_func_name
     global lambda_function_arn
 
+    #    if (deletednsfqdn(gwDpip, fqdn) =='false)':
+    #       logger.info("[ERROR]: Failed remove a record {}".format(fqdn))
+    #       # terminate('false')
+    #        return 'ERROR'
+    #   else:
+    #        logger.info("[INFO]: Deletion of A record {}".format(fqdn))
+
     if (release_ips() == 'false'):
         logger.info("[ERROR]: Failed to deallocate Tunnel network in Dynamodb")
         # terminate('false')
         return 'ERROR'
     else:
         logger.info("[INFO]: Release of tunnel network successful")
+
     # Delete gw from portal
-    
     if (send_command('del_gw') == 'false'):
         logger.info("[ERROR]: Error in command to delete gateway from portal")
         # terminate('false')
@@ -521,10 +525,10 @@ def terminate_gw():
         logger.info("[INFO]: Commit portal successful")
         logger.info("[INFO]: Done deleting GW from the universe!")
         # terminate('true')
-    
+
     try:
         events_client.remove_targets(
-            Rule='PushMetricsRuleFor-'+instanceId,
+            Rule='PushMetricsRuleFor-' + instanceId,
             Ids=[
                 gwMgmtIp
             ]
@@ -532,39 +536,34 @@ def terminate_gw():
     except Exception as e:
         logger.info("[ERROR]: Error removing target")
         logger.info("[RESPONSE]: {}".format(e))
-        #terminate('false')
+        # terminate('false')
         return 'ERROR'
     else:
         logger.info("[INFO]: Successfully removed target lambda function for rule")
 
     try:
         events_client.delete_rule(
-             Name='PushMetricsRuleFor-'+instanceId
+            Name='PushMetricsRuleFor-' + instanceId
         )
     except Exception as e:
         logger.info("[ERROR]: Error removing rule")
         logger.info("[RESPONSE]: {}".format(e))
-        #terminate('false')
+        # terminate('false')
         return 'ERROR'
     else:
         logger.info("[INFO]: Successfully deleted rule")
 
     try:
         lambda_client.delete_function(
-             FunctionName='PushMetricsFor-'+instanceId
+            FunctionName='PushMetricsFor-' + instanceId
         )
     except Exception as e:
         logger.info("[ERROR]: Error deleting lambda function {}".format(lambda_function_arn))
         logger.info("[RESPONSE]: {}".format(e))
-        #terminate('false')
+        # terminate('false')
         return 'ERROR'
     else:
         logger.info("[INFO]: Successfully deleted lambda function")
-
-
-
-
-    
 
 
 def send_command(cmd):
@@ -577,15 +576,14 @@ def send_command(cmd):
     global hostname
     global fqdn
 
-
     job_id = ""
 
     if (cmd == 'commit_gw'):
-        cmd_string = "https://"+gwMgmtIp+"/api/?type=commit&cmd=<commit></commit>&key="+api_key
+        cmd_string = "https://" + gwMgmtIp + "/api/?type=commit&cmd=<commit></commit>&key=" + api_key
     elif (cmd == 'certificate'):
-        cmd_string = "https://"+gwMgmtIp+"/api/?type=op&cmd=<request><certificate><generate><signed-by>root_CA</signed-by><certificate-name>gateway-cert</certificate-name><name>"+gwDpIp+"</name><algorithm><RSA><rsa-nbits>2048</rsa-nbits></RSA></algorithm></generate></certificate></request>&key="+api_key
+        cmd_string = "https://" + gwMgmtIp + "/api/?type=op&cmd=<request><certificate><generate><signed-by>root_CA</signed-by><certificate-name>gateway-cert</certificate-name><name>" + gwDpIp + "</name><algorithm><RSA><rsa-nbits>2048</rsa-nbits></RSA></algorithm></generate></certificate></request>&key=" + api_key
     elif (cmd == 'tls_profile'):
-        cmd_string = "https://"+gwMgmtIp+"/api/?type=config&action=set&xpath=/config/shared/ssl-tls-service-profile/entry[@name='gateway-ssl-tls']&element=<certificate>gateway-cert</certificate>&key="+api_key
+        cmd_string = "https://" + gwMgmtIp + "/api/?type=config&action=set&xpath=/config/shared/ssl-tls-service-profile/entry[@name='gateway-ssl-tls']&element=<certificate>gateway-cert</certificate>&key=" + api_key
 
     # v7 api call to set gw in portal
     # elif (cmd == 'add_gw'):
@@ -596,12 +594,12 @@ def send_command(cmd):
     # asg-gw" + gwDpIp + "</description><priority>1</priority><manual>yes</manual>&key=" + api_key
 
     # v8 api call to set gw in portal
-    elif(cmd == 'add_gw'):
-        cmd_string = "https://"+PortalMgmtIp+"/api/?type=config&action=set&xpath=/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/global-protect/global-protect-portal/entry[@name='portal']/client-config/configs/entry[@name='default']/gateways/external/list/entry[@name='"+hostname+"']&element=<manual>yes</manual><fqdn>"+fqdn+"</fqdn>&key="+api_key
-    elif(cmd == 'del_gw'):
-        cmd_string = "https://"+PortalMgmtIp+"/api/?type=config&action=delete&xpath=/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/global-protect/global-protect-portal/entry[@name='portal']/client-config/configs/entry[@name='default']/gateways/external/list/entry[@name='"+hostname+"']&key="+api_key
+    elif (cmd == 'add_gw'):
+        cmd_string = "https://" + PortalMgmtIp + "/api/?type=config&action=set&xpath=/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/global-protect/global-protect-portal/entry[@name='portal']/client-config/configs/entry[@name='default']/gateways/external/list/entry[@name='" + hostname + "']&element=<manual>yes</manual><fqdn>" + fqdn + "</fqdn>&key=" + api_key
+    elif (cmd == 'del_gw'):
+        cmd_string = "https://" + PortalMgmtIp + "/api/?type=config&action=delete&xpath=/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/global-protect/global-protect-portal/entry[@name='portal']/client-config/configs/entry[@name='default']/gateways/external/list/entry[@name='" + hostname + "']&key=" + api_key
     elif (cmd == 'commit_portal'):
-        cmd_string = "https://"+PortalMgmtIp+"/api/?type=commit&cmd=<commit></commit>&key="+api_key
+        cmd_string = "https://" + PortalMgmtIp + "/api/?type=commit&cmd=<commit></commit>&key=" + api_key
     else:
         logger.info("[ERROR]: Unknown command")
         return 'false'
@@ -609,11 +607,11 @@ def send_command(cmd):
     logger.info('[INFO]: Sending command: %s', cmd_string)
     try:
         response = urllib2.urlopen(cmd_string, context=gcontext, timeout=5).read()
-        #Now we do stuff to the gw
+        # Now we do stuff to the gw
         logger.info("[RESPONSE] in send command: {}".format(response))
     except:
-         logger.info("[ERROR]: Something bad happened when sending command")
-         return  'false'
+        logger.info("[ERROR]: Something bad happened when sending command")
+        return 'false'
     else:
         logger.info("[INFO]: Got a (good?) response from command")
 
@@ -627,7 +625,7 @@ def send_command(cmd):
         return 'false'
 
     if resp_header.attrib['status'] == 'success':
-    #The fw responded with a successful command execution. No need to check what the actual response is
+        # The fw responded with a successful command execution. No need to check what the actual response is
         logger.info("[INFO]: Successfully executed command")
         return 'true'
 
@@ -635,8 +633,7 @@ def send_command(cmd):
         logger.info("[ERROR]: Error allocating GP tunnel address and pool")
         return 'false'
 
-
-    if(cmd == 'commit_gw' or cmd == 'commit_portal'):
+    if (cmd == 'commit_gw' or cmd == 'commit_portal'):
         for element in resp_header:
             for iterator in element:
                 if iterator.tag == 'job':
@@ -645,14 +642,14 @@ def send_command(cmd):
                         logger.info("[ERROR]: Didn't get a job id")
                         return 'false'
                     else:
-                        break #break out of inner loop
+                        break  # break out of inner loop
                 else:
                     continue
-            break #break out of outer loop
+            break  # break out of outer loop
         if cmd == 'commit_gw':
-            cmd_string = "https://"+gwMgmtIp+"/api/?type=op&cmd=<show><jobs><id>"+job_id+"</id></jobs></show>&key="+api_key
+            cmd_string = "https://" + gwMgmtIp + "/api/?type=op&cmd=<show><jobs><id>" + job_id + "</id></jobs></show>&key=" + api_key
         elif cmd == 'commit_portal':
-            cmd_string = "https://"+PortalMgmtIp+"/api/?type=op&cmd=<show><jobs><id>"+job_id+"</id></jobs></show>&key="+api_key
+            cmd_string = "https://" + PortalMgmtIp + "/api/?type=op&cmd=<show><jobs><id>" + job_id + "</id></jobs></show>&key=" + api_key
         else:
             logger.info("[ERROR]: send command not commit gw or commit portal so error!")
             return 'false'
@@ -661,29 +658,25 @@ def send_command(cmd):
             return 'false'
 
 
-
-
-
-
-#the context object gives remaining time in milliseconds so that can be used to determine how long to sleep
-#so something like ,check time remaining, if greater than 2 minute then sleep for 1 minute and check again
-#if 2 less than 2 minutes , check fw and if not up, call lambda function and exit
-#think of a more generic way?? what if there is 1 minute left and fw is up?
-#call lambda again and exit?
+# the context object gives remaining time in milliseconds so that can be used to determine how long to sleep
+# so something like ,check time remaining, if greater than 2 minute then sleep for 1 minute and check again
+# if 2 less than 2 minutes , check fw and if not up, call lambda function and exit
+# think of a more generic way?? what if there is 1 minute left and fw is up?
+# call lambda again and exit?
 def check_fw_up():
     global gcontext
     global gwMgmtIp
     global api_key
-    cmd = "https://"+gwMgmtIp+"/api/?type=op&cmd=<show><chassis-ready></chassis-ready></show>&key="+api_key
-    #Send command to fw and see if it times out or we get a response
+    cmd = "https://" + gwMgmtIp + "/api/?type=op&cmd=<show><chassis-ready></chassis-ready></show>&key=" + api_key
+    # Send command to fw and see if it times out or we get a response
     logger.info('[INFO]: Sending command: %s', cmd)
     try:
         response = urllib2.urlopen(cmd, context=gcontext, timeout=5).read()
-        #Now we do stuff to the gw
+        # Now we do stuff to the gw
     except urllib2.URLError:
         logger.info("[INFO]: No response from FW. So maybe not up!")
         return 'no'
-        #sleep and check again?
+        # sleep and check again?
     else:
         logger.info("[INFO]: FW is up!!")
 
@@ -692,25 +685,26 @@ def check_fw_up():
 
     if resp_header.tag != 'response':
         logger.info("[ERROR]: didn't get a valid response from firewall...maybe a timeout")
-        #raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
+        # raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
         return 'cmd_error'
 
     if resp_header.attrib['status'] == 'error':
         logger.info("[ERROR]: Got an error for the command")
-        #raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
+        # raise Exception('Failed to get ASG name in : ', inspect.stack()[1][3])
         return 'cmd_error'
 
     if resp_header.attrib['status'] == 'success':
-    #The fw responded with a successful command execution. So is it ready?
+        # The fw responded with a successful command execution. So is it ready?
         for element in resp_header:
             if element.text.rstrip() == 'yes':
-            #Call config gw command?
+                # Call config gw command?
                 logger.info("[INFO]: FW is ready for configure")
                 return 'yes'
             else:
                 return 'almost'
-            #The fw is still not ready to accept commands
-            #so invoke lambda again and do this all over? Or just retry command?
+            # The fw is still not ready to accept commands
+            # so invoke lambda again and do this all over? Or just retry command?
+
 
 ####WORKAROUND UNTIL I FIND A BETTER WAY TO CHECK FW MGMT-SERVICES IS UP
 def check_auto_commit_status():
@@ -719,17 +713,17 @@ def check_auto_commit_status():
     global gwMgmtIp
     global api_key
 
-    job_id = '1' #auto commit job id is always 1
-    cmd = "https://"+gwMgmtIp+"/api/?type=op&cmd=<show><jobs><id>"+job_id+"</id></jobs></show>&key="+api_key
-    #Send command to fw and see if it times out or we get a response
+    job_id = '1'  # auto commit job id is always 1
+    cmd = "https://" + gwMgmtIp + "/api/?type=op&cmd=<show><jobs><id>" + job_id + "</id></jobs></show>&key=" + api_key
+    # Send command to fw and see if it times out or we get a response
     logger.info('[INFO]: Sending command: %s', cmd)
     try:
         response = urllib2.urlopen(cmd, context=gcontext, timeout=5).read()
-        #Now we do stuff to the gw
+        # Now we do stuff to the gw
     except urllib2.URLError:
         logger.info("[INFO]: No response from FW. So maybe not up!")
         return 'no'
-        #sleep and check again?
+        # sleep and check again?
     else:
         logger.info("[INFO]: FW is up!!")
 
@@ -755,7 +749,7 @@ def check_auto_commit_status():
                     return 'cmd_error'
 
     if resp_header.attrib['status'] == 'success':
-    #The fw responded with a successful command execution. So is it ready?
+        # The fw responded with a successful command execution. So is it ready?
         for element1 in resp_header:
             for element2 in element1:
                 for element3 in element2:
@@ -767,10 +761,7 @@ def check_auto_commit_status():
                             return 'almost'
 
 
-
-
 def allocate_address(gwMgmtIp):
-
     global gcontext
     global api_key
     global instanceId
@@ -782,7 +773,7 @@ def allocate_address(gwMgmtIp):
     try:
         response = table.scan(
             FilterExpression=Attr('Allocated').eq('no')
-            )
+        )
     except Clienterror as e:
         logger.info("[ERROR]: Failed to retrieve IP from database {}".format(e.args))
         return 'false'
@@ -792,8 +783,7 @@ def allocate_address(gwMgmtIp):
     IP = available_ips[0]['TunnelIP']
     poolrange = available_ips[0]['Pool Range']
 
-
-    cmd_string = "https://" + gwMgmtIp +"/api/?type=config" \
+    cmd_string = "https://" + gwMgmtIp + "/api/?type=config" \
                                          "&action=set" \
                                          "&xpath=/config/devices/entry[@name='localhost.localdomain']/vsys/entry" \
                                          "[@name='vsys1']/global-protect/global-protect-gateway/entry[@name='gw1']/" \
@@ -809,12 +799,11 @@ def allocate_address(gwMgmtIp):
     #                                       "/network/interface/tunnel/units/entry[@name='tunnel.10']" \
     #                                       "&element=<ip><entry name='" +poolip + "'/></ip>&key=" + fwapikey
 
-    cmd_string1 = "https://" + gwMgmtIp +"/api/?type=config" \
-                  "&action=set&xpath=%2Fconfig%2Fdevices%2Fentry%5B%40name%3D%27localhost.localdomain%27%5D%" \
-                  "2Fnetwork%2Finterface%2Ftunnel%2Funits%2Fentry%5B%40name%3D%27tunnel.10%27%5D" \
-                  "&key=" + api_key + \
+    cmd_string1 = "https://" + gwMgmtIp + "/api/?type=config" \
+                                          "&action=set&xpath=%2Fconfig%2Fdevices%2Fentry%5B%40name%3D%27localhost.localdomain%27%5D%" \
+                                          "2Fnetwork%2Finterface%2Ftunnel%2Funits%2Fentry%5B%40name%3D%27tunnel.10%27%5D" \
+                                          "&key=" + api_key + \
                   "&element=%3Cip%3E%3Centry+name%3D%22" + IP + "%2F24%22%2F%3E%3C%2Fip%3E"
-
 
     try:
 
@@ -870,7 +859,7 @@ def release_ips():
         )
         records = response['Items']
         IP = records[0]['CIDR']
-        logger.info('[INFO]: Released IP address %s',IP)
+        logger.info('[INFO]: Released IP address %s', IP)
 
         response = table.update_item(
             Key={'CIDR': IP},
@@ -884,7 +873,7 @@ def release_ips():
     except Clienterror as e:
         print(e.response['Error']['Message'])
         return 'false'
-        
+
 
 def get_ips():
     tablename = 'GPClientIP'
@@ -892,7 +881,7 @@ def get_ips():
 
     try:
         response = table.scan(
-        FilterExpression=Attr('Allocated').eq('no')
+            FilterExpression=Attr('Allocated').eq('no')
         )
     except Clienterror as e:
         logger.info("[ERROR]: Something bad happened when sending command{}".format(e.args))
@@ -904,8 +893,8 @@ def get_ips():
     VPNPool = available_ips[0]['Pool Range']
 
 
-def creatednsfqdn(gwip, fqdn):
-
+def creatednsfqdn(gwip):
+    global fqdn
     try:
         rt53client.change_resource_record_sets(
             HostedZoneId=hostedZoneId,
@@ -934,8 +923,8 @@ def creatednsfqdn(gwip, fqdn):
         logger.info("[RESPONSE]: {}".format(e))
         return 'ERROR'
 
-    logger.info("[Info]: Created reating DNS entry with fqdn %s", fqdn)
-    logger.info("[Info]: Created reating DNS entry with ip %s", gwip)
+    logger.info("[Info]: Created  DNS entry with fqdn %s", fqdn)
+    logger.info("[Info]: Created  DNS entry with ip %s", gwip)
     return
 
 
@@ -965,7 +954,6 @@ def deletednsfqdn(gwip, fqdn):
     )
 
     return
-
 
 
 def createdns(gwip):
@@ -1089,10 +1077,10 @@ def get_new_ip(records):
                     return
 
             elif record['Type'] == 'A' and record['SetIdentifier'] == 'secondary':
-                secondary_arecords_list =[]
+                secondary_arecords_list = []
                 SecondarySetIdentifier = record['SetIdentifier']
                 ttl = record['TTL']
-                #region = record['Region']
+                # region = record['Region']
                 for arecs in record['ResourceRecords']:
                     secondary_arecords_list.append(arecs)
                     return
@@ -1101,49 +1089,45 @@ def get_new_ip(records):
                 return
 
 
+def genhostname(gwip):
+    global hostname
+    global fqdn
+    hostname = str(int(netaddr.IPAddress(gwip)))
+    if hostname:
+        logger.info("[INFO]: Generated unique hostname from IP.")
+    else:
+        logger.error("[ERROR]: Failed to generate hostname\n")
+        return 'false'
+    fqdn = hostname + '.' + rt53Domain
+
+    if fqdn:
+        logger.info("[INFO]: Generated unique fqdn.")
+    else:
+        logger.error("[ERROR]: Failed to generate fqdn\n")
+        return 'false'
+    return
 
 
-# def genhostname(gwip):
-#     global hostname
-#     global fqdn
-#     hostname = str(int(netaddr.IPAddress(gwip)))
-#     if hostname:
-#         logger.info("[INFO]: Generated unique hostname from IP.")
-#     else:
-#         logger.error("[ERROR]: Failed to generate hostname\n")
-#         return 'false'
-#     fqdn = hostname + '.' + rt53Domain
-#
-#     if fqdn:
-#         logger.info("[INFO]: Generated unique fqdn.")
-#     else:
-#         logger.error("[ERROR]: Failed to generate fqdn\n")
-#         return 'false'
-#     return
-
-
-
-#define a closure for easy termination later on
+# define a closure for easy termination later on
 def terminate(success):
     global asg_name
     global asg_hookname
     global instanceId
 
-
-    #log that we're terminating and why
+    # log that we're terminating and why
     if (success == 'false'):
-      logger.error("[ERROR]: Lambda function reporting failure to AutoScaling with error\n");
-      result = "ABANDON"
+        logger.error("[ERROR]: Lambda function reporting failure to AutoScaling with error\n");
+        result = "ABANDON"
     else:
-      logger.info("[INFO]: Lambda function reporting success to AutoScaling.");
-      result = "CONTINUE";
+        logger.info("[INFO]: Lambda function reporting success to AutoScaling.");
+        result = "CONTINUE";
 
     logger.info("[INFO]: asg_name: {}, asg_hookname: {}, instanceId: {}".format(asg_name, asg_hookname, instanceId))
-    #call autoscaling
+    # call autoscaling
     asg.complete_lifecycle_action(
-        AutoScalingGroupName = asg_name,
-        LifecycleHookName = asg_hookname,
-        InstanceId = instanceId,
-        LifecycleActionResult = result)
+        AutoScalingGroupName=asg_name,
+        LifecycleHookName=asg_hookname,
+        InstanceId=instanceId,
+        LifecycleActionResult=result)
     return
 
